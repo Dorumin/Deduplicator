@@ -15,8 +15,14 @@ struct Options {
     #[structopt(long, parse(from_os_str), help = "Path towards the folder to scan")]
     path: PathBuf,
 
-    #[structopt(long, default_value = "first", help = "What file to keep")]
+    #[structopt(long, default_value = "first", help = "What file to keep; `first` or `last`")]
     keep: String,
+
+    #[structopt(long, default_value = "modified", help = "How to order files; `modified`, `created`, `name`")]
+    order: String,
+
+    #[structopt(long, default_value = "report", help = "What to do with the files; `report` or `delete`")]
+    action: String,
 
     #[structopt(long, default_value = "4", help = "How many threads to split file reading into")]
     threads: usize,
@@ -89,6 +95,16 @@ impl Deduplicator {
     }
 
     fn execute(&mut self) {
+        self.collect();
+
+        if self.options.action == "report" {
+            self.report();
+        } else if self.options.action == "delete" {
+            self.delete();
+        }
+    }
+
+    fn collect(&mut self) {
         let (tx, rx) = mpsc::channel();
         let mut iterations = 0;
 
@@ -114,18 +130,32 @@ impl Deduplicator {
                 .or_insert_with(Vec::new)
                 .push(entry);
         }
+    }
+
+    fn report(&self) {
+        let path_char_count = self.options.path.to_string_lossy().chars().count();
 
         for files in self.map.values() {
             if files.len() > 1 {
                 println!("Found {} duplicate files:", files.len());
 
                 for file in files.iter() {
-                    println!("{}", file.path().to_string_lossy());
+                    let short_path: String = file.path().to_string_lossy()
+                        .chars()
+                        // Skip the path characters + 1 for the leading path separator
+                        .skip(path_char_count + 1)
+                        .collect();
+
+                    println!("{}", short_path);
                 }
 
                 println!();
             }
         }
+    }
+
+    fn delete(&self) {
+
     }
 }
 
