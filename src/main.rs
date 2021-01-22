@@ -18,6 +18,9 @@ struct Options {
     #[structopt(long, default_value = "first")]
     keep: String,
 
+    #[structopt(long, default_value = "4")]
+    threads: usize,
+
     #[structopt(long)]
     no_recursive: bool,
 }
@@ -50,8 +53,8 @@ struct Deduplicator {
 impl Deduplicator {
     fn new(options: Options) -> Self  {
         Deduplicator {
+            pool: ThreadPool::new(options.threads),
             options,
-            pool: ThreadPool::new(8),
             map: HashMap::new()
         }
     }
