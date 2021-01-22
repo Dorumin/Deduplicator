@@ -12,16 +12,16 @@ use threadpool::ThreadPool;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "deduplicator", about = "Deduplicates files in a folder")]
 struct Options {
-    #[structopt(long, parse(from_os_str))]
+    #[structopt(long, parse(from_os_str), help = "Path towards the folder to scan")]
     path: PathBuf,
 
-    #[structopt(long, default_value = "first")]
+    #[structopt(long, default_value = "first", help = "What file to keep")]
     keep: String,
 
-    #[structopt(long, default_value = "4")]
+    #[structopt(long, default_value = "4", help = "How many threads to split file reading into")]
     threads: usize,
 
-    #[structopt(long)]
+    #[structopt(long, help = "Whether to search subfolders recursively")]
     no_recursive: bool,
 }
 
