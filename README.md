@@ -15,12 +15,14 @@ USAGE:
     deduplicator.exe [FLAGS] [OPTIONS] --path <path>
 
 FLAGS:
+        --delete          Whether to delete the duplicate files
     -h, --help            Prints help information
-        --no-recursive    Whether to search subfolders recursively
+        --no-recursive    Whether to not search subfolders recursively
     -V, --version         Prints version information
 
 OPTIONS:
-        --keep <keep>          What file to keep [default: first]
+        --keep <keep>          What file to keep; `first` or `last` [default: first]
+        --order <order>        How to order files; `modified`, `created`, `name` [default: modified]
         --path <path>          Path towards the folder to scan
         --threads <threads>    How many threads to split file reading into [default: 4]
 ```
