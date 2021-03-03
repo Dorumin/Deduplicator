@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::io;
-use std::fs::File;
+use std::fs;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
 
@@ -21,13 +21,13 @@ struct Options {
     #[structopt(long, default_value = "modified", help = "How to order files; `modified`, `created`, `name`")]
     order: String,
 
-    #[structopt(long, default_value = "report", help = "What to do with the files; `report` or `delete`")]
-    action: String,
+    #[structopt(long, help = "Whether to delete the duplicate files")]
+    delete: bool,
 
     #[structopt(long, default_value = "4", help = "How many threads to split file reading into")]
     threads: usize,
 
-    #[structopt(long, help = "Whether to search subfolders recursively")]
+    #[structopt(long, help = "Whether to not search subfolders recursively")]
     no_recursive: bool,
 }
 
@@ -77,7 +77,7 @@ impl Deduplicator {
     }
 
     fn digest(entry: &DirEntry) -> Option<Vec<u8>> {
-        let file = match File::open(entry.path()) {
+        let file = match fs::File::open(entry.path()) {
             // Ignore any inaccessible files or folders that can't be read
             Err(_) => {
                 return None;
@@ -94,21 +94,67 @@ impl Deduplicator {
         Some(digest.as_ref().to_owned())
     }
 
+    fn map_with_metadata(files: &[DirEntry]) -> impl Iterator<Item=(fs::Metadata, &DirEntry)> {
+        files.iter()
+            .map(|entry| (entry.metadata(), entry))
+            .filter(|(meta, _)| meta.is_ok())
+            .map(|(meta, entry)| (meta.unwrap(), entry))
+    }
+
+    fn select<'dirs>(&self, files: &'dirs [DirEntry]) -> (&'dirs DirEntry, &'dirs [DirEntry]) {
+        let mut mapped: Vec<_> = Deduplicator::map_with_metadata(files).collect();
+
+        match self.options.order.as_str() {
+            "modified" => {
+                mapped.sort_by(|(a, _), (b, _)| {
+                    a.modified().unwrap().cmp(&b.modified().unwrap())
+                });
+            },
+            "created" => {
+                mapped.sort_by(|(a, _), (b, _)| {
+                    a.created().unwrap().cmp(&b.created().unwrap())
+                });
+            },
+            "name" => {
+                mapped.sort_by(|(_, a), (_, b)| {
+                    a.file_name().cmp(&b.file_name())
+                });
+            },
+            _ => unreachable!()
+        }
+
+        match self.options.keep.as_ref() {
+            "first" => {
+                let first = files.first().unwrap();
+
+                (first, &files[1..])
+            },
+            "last" => {
+                let last = files.last().unwrap();
+
+                (last, &files[..files.len()])
+            },
+            _ => unreachable!()
+        }
+    }
+
     fn execute(&mut self) {
         self.collect();
 
-        if self.options.action == "report" {
-            self.report();
-        } else if self.options.action == "delete" {
-            self.delete();
-        }
+
+        self.consume();
     }
 
     fn collect(&mut self) {
         let (tx, rx) = mpsc::channel();
         let mut iterations = 0;
 
-        for entry in self.list_entries() {
+        let entries: Vec<_> = self.list_entries().collect();
+        let count = entries.len();
+
+        println!("Found {} files", count);
+
+        for entry in entries.into_iter() {
             iterations += 1;
 
             let tx = tx.clone();
@@ -125,28 +171,37 @@ impl Deduplicator {
             });
         }
 
-        for (digest, entry) in rx.iter().take(iterations).filter_map(|x| x) {
+        for (idx, (digest, entry)) in rx.iter().take(iterations).filter_map(|x| x).enumerate() {
+            eprint!("\rProcessed {} files out of {}", idx, count);
+
             self.map.entry(digest)
                 .or_insert_with(Vec::new)
                 .push(entry);
         }
     }
 
-    fn report(&self) {
+    fn consume(&self) {
         let path_char_count = self.options.path.to_string_lossy().chars().count();
 
         for files in self.map.values() {
             if files.len() > 1 {
-                println!("Found {} duplicate files:", files.len());
+                let (source, duplicates) = self.select(files);
 
-                for file in files.iter() {
+                println!("Found {} duplicate files:", files.len());
+                println!("Source: {}", source.path().to_string_lossy());
+
+                for file in duplicates.iter() {
                     let short_path: String = file.path().to_string_lossy()
                         .chars()
                         // Skip the path characters + 1 for the leading path separator
                         .skip(path_char_count + 1)
                         .collect();
 
-                    println!("{}", short_path);
+                    println!("Copy: {}", short_path);
+                }
+
+                if self.options.delete {
+                    self.delete(duplicates);
                 }
 
                 println!();
@@ -154,8 +209,17 @@ impl Deduplicator {
         }
     }
 
-    fn delete(&self) {
-
+    fn delete(&self, duplicates: &[DirEntry]) {
+        for dup in duplicates.iter() {
+            match fs::remove_file(dup.path()) {
+                Ok(_) => {},
+                Err(err) => {
+                    eprintln!("Failure while deleting: {}", dup.path().to_string_lossy());
+                    eprintln!("{:?}", err);
+                    eprintln!();
+                }
+            }
+        }
     }
 }
 
