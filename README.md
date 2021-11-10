@@ -6,7 +6,7 @@ Would I have saved time by using them instead of making my own? Definitely.
 
 Did I have more fun and get to play around with thread pools, file streaming, and hashing? Well, try for yourself and tell me about it
 
-```shell
+```powershell
 $ deduplicator --help
 deduplicator 0.1.0
 Deduplicates files in a folder
