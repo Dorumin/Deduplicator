@@ -2,42 +2,23 @@
 #![deny(clippy::nursery)]
 #![deny(clippy::pedantic)]
 
+mod options;
+
 use std::io;
 use std::fs;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use ring::digest::{SHA256, Digest, Context};
 use structopt::StructOpt;
 use walkdir::{DirEntry, WalkDir};
 use threadpool::ThreadPool;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "deduplicator", about = "Deduplicates files in a folder")]
-struct Options {
-    #[structopt(long, parse(from_os_str), help = "Path towards the folder to scan")]
-    path: PathBuf,
+use options::Options;
 
-    #[structopt(long, default_value = "first", help = "What file to keep; `first` or `last`")]
-    keep: String,
-
-    // TODO: Make an enum
-    #[structopt(long, default_value = "modified", help = "How to order files; `modified`, `created`, `name`")]
-    order: String,
-
-    #[structopt(long, help = "Whether to delete the duplicate files")]
-    delete: bool,
-
-    #[structopt(long, help = "Whether to shut the fuck up")]
-    quiet: bool,
-
-    #[structopt(long, default_value = "4", help = "How many threads to split file reading into")]
-    threads: usize,
-
-    #[structopt(long, help = "Whether to not search subfolders recursively")]
-    no_recursive: bool,
-}
+use crate::options::OutputSort;
 
 fn sha256_digest<R>(mut reader: R) -> io::Result<Digest>
 where
@@ -59,6 +40,7 @@ where
 }
 
 struct Deduplicator {
+    start: Instant,
     options: Options,
     pool: ThreadPool,
     sizes: HashMap<u64, Vec<DirEntry>>
@@ -67,7 +49,8 @@ struct Deduplicator {
 impl Deduplicator {
     fn new(options: Options) -> Self  {
         Self {
-            pool: ThreadPool::new(options.threads),
+            start: Instant::now(),
+            pool: ThreadPool::new(options.threads.unwrap_or_else(|| num_cpus::get())),
             options,
             sizes: HashMap::new()
         }
@@ -149,7 +132,7 @@ impl Deduplicator {
         }
     }
 
-    fn execute(&mut self) {
+    fn execute(mut self) {
         self.collect();
 
         self.consume();
@@ -239,13 +222,37 @@ impl Deduplicator {
         (dupes, collisions)
     }
 
-    fn consume(&self) {
+    fn consume(mut self) {
         let mut duplicate_groups = 0;
         let mut duplicate_count = 0;
         let mut collision_count = 0;
 
-        for files in self.sizes.values() {
-            let (dupes_vec, collisions) = Self::get_true_dupes(files);
+        let elapsed = self.start.elapsed();
+
+        let mut files: Vec<_> = self.sizes.into_values().collect();
+        self.sizes = HashMap::new();
+
+        if let Some(ref sorter) = self.options.sort_output {
+            match sorter {
+                OutputSort::Created => {
+                    files.sort_by_cached_key(|f| f.last().unwrap().metadata().unwrap().created().unwrap())
+                }
+                OutputSort::Modified => {
+                    files.sort_by_cached_key(|f| f.last().unwrap().metadata().unwrap().modified().unwrap())
+                },
+                OutputSort::Name => {
+                    files.sort_by(|a, b| {
+                        let a_name = a.last().unwrap().file_name();
+                        let b_name = b.last().unwrap().file_name();
+
+                        a_name.cmp(b_name)
+                    });
+                }
+            }
+        }
+
+        for files in files {
+            let (dupes_vec, collisions) = Self::get_true_dupes(&files);
 
             collision_count += collisions;
 
@@ -256,10 +263,10 @@ impl Deduplicator {
                 if !self.options.quiet {
                     println!("Found {} duplicate files:", duplicates.len() + 1);
                     println!("Source: {}", self.shorten_path(source.path()));
-    
+
                     for file in &duplicates {
                         let short_path = self.shorten_path(file.path());
-    
+
                         println!("Copy:   {}", short_path);
                     }
                 }
@@ -281,6 +288,9 @@ impl Deduplicator {
         println!("{} duplicate groups", duplicate_groups);
         println!("{} duplicates found", duplicate_count);
         println!("{} size collisions", collision_count);
+        println!();
+        println!("Done in {}ms!", self.start.elapsed().as_millis());
+        println!("Scan took {}ms", elapsed.as_millis());
     }
 
     fn delete(duplicates: &[&DirEntry]) {
@@ -305,7 +315,7 @@ fn main() {
     .expect("Error setting Ctrl-C handler");
 
     let options = Options::from_args();
-    let mut deduplicator = Deduplicator::new(options);
+    let deduplicator = Deduplicator::new(options);
 
     deduplicator.execute();
 }
