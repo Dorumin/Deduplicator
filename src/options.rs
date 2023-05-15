@@ -1,65 +1,66 @@
-use structopt::StructOpt;
-use std::fmt::Display;
 use std::path::PathBuf;
-use std::str::FromStr;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "deduplicator", about = "Deduplicates files in a folder")]
+use clap::{Parser, ValueEnum};
+
+#[derive(Parser, Debug)]
+#[clap(name = "deduplicator", about = "Deduplicates files in a folder")]
 pub struct Options {
-    #[structopt(long, parse(from_os_str), help = "Path towards the folder to scan")]
+    #[clap(long, help = "Path towards the folder to scan")]
     pub path: PathBuf,
 
-    #[structopt(long, default_value = "first", help = "What file to keep; `first` or `last`")]
-    pub keep: String,
+    #[clap(long, value_enum, default_value = "first", help = "What file to keep; `first` or `last`")]
+    pub keep: Keep,
 
-    // TODO: Make an enum
-    #[structopt(long, default_value = "modified", help = "How to order files; `modified`, `created`, `name`")]
-    pub order: String,
+    // // TODO: Make an enum
+    // #[clap(long, default_value = "modified", help = "How to order files; `modified`, `created`, `name`")]
+    // pub order: String,
 
-    #[structopt(long, help = "Whether to delete the duplicate files")]
+    #[clap(long, value_enum, default_value = "modified", help = "How to order files; `modified`, `created`, `name`")]
+    pub order: FileOrdering,
+
+    #[clap(long, help = "Whether to delete the duplicate files")]
     pub delete: bool,
 
-    #[structopt(long, help = "Whether to shut the fuck up")]
+    #[clap(long, help = "Whether to shut the fuck up")]
     pub quiet: bool,
 
-    #[structopt(long, help = "How many threads to split file reading into")]
-    pub threads: Option<usize>,
+    #[clap(long, default_value_t = num_cpus::get(), help = "How many threads to split file reading into")]
+    pub threads: usize,
 
-    #[structopt(long, help = "Whether to not search subfolders recursively")]
+    #[clap(long, help = "Whether to not search subfolders recursively")]
     pub no_recursive: bool,
 
-    #[structopt(long, help = "Whether to show the summary at the end")]
+    #[clap(long, help = "Whether to show the summary at the end")]
     pub no_summary: bool,
 
-    #[structopt(long, help = "How to sort the duplicate groups; `modified`, `created`, `name`")]
-    pub sort_output: Option<OutputSort>
+    #[clap(long, help = "Whether to not ignore errors (e.g. retrieving and reading files)")]
+    pub no_ignore_errors: bool,
+
+    #[clap(long, value_enum, help = "How to sort the duplicate groups; `modified`, `created`, `name`")]
+    pub sort_output: Option<FileOrdering>,
+
+    #[clap(long, value_enum, default_value = "hash", help = "Criteria for file duplicate finding; `hash` or `similarity`")]
+    pub mode: Mode,
+
+    #[clap(long, default_value = "95", help = "Required similarity for reporting duplicate images. Used in similarity mode. 0-100, 100 indicating exact match")]
+    pub similarity_score: u32
 }
 
-#[derive(Debug)]
-pub enum OutputSort {
+#[derive(ValueEnum, Debug, Clone)]
+pub enum FileOrdering {
     Modified,
     Created,
     Name
 }
 
-#[derive(Debug)]
-pub struct OutputSortErr(String);
-
-impl FromStr for OutputSort {
-    type Err = OutputSortErr;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "modified" => Ok(Self::Modified),
-            "created" => Ok(Self::Created),
-            "name" => Ok(Self::Name),
-            _ => Err(OutputSortErr(s.to_string()))
-        }
-    }
+#[derive(ValueEnum, Debug, Clone)]
+pub enum Keep {
+    First,
+    Last
 }
 
-impl Display for OutputSortErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("Expected one of `modified`, `created`, or `name`; found {}", self.0))
-    }
+#[derive(ValueEnum, Debug, Clone)]
+pub enum Mode {
+    Hash,
+    Similarity
 }
