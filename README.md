@@ -8,21 +8,53 @@ Did I have more fun and get to play around with thread pools, file streaming, an
 
 ```powershell
 $ deduplicator --help
-deduplicator 0.1.0
+deduplicator
 Deduplicates files in a folder
 
 USAGE:
-    deduplicator.exe [FLAGS] [OPTIONS] --path <path>
-
-FLAGS:
-        --delete          Whether to delete the duplicate files
-    -h, --help            Prints help information
-        --no-recursive    Whether to not search subfolders recursively
-    -V, --version         Prints version information
+    deduplicator.exe [OPTIONS] --path <PATH>
 
 OPTIONS:
-        --keep <keep>          What file to keep; `first` or `last` [default: first]
-        --order <order>        How to order files; `modified`, `created`, `name` [default: modified]
-        --path <path>          Path towards the folder to scan
-        --threads <threads>    How many threads to split file reading into [default: 4]
+        --delete
+            Whether to delete the duplicate files
+
+    -h, --help
+            Print help information
+
+        --keep <KEEP>
+            What file to keep; `first` or `last` [default: first] [possible values: first, last]
+
+        --mode <MODE>
+            Criteria for file duplicate finding; `hash` or `similarity` [default: hash] [possible
+            values: hash, similarity]
+
+        --no-ignore-errors
+            Whether to not ignore errors (e.g. retrieving and reading files)
+
+        --no-recursive
+            Whether to not search subfolders recursively
+
+        --no-summary
+            Whether to show the summary at the end
+
+        --order <ORDER>
+            How to order files; `modified`, `created`, `name` [default: modified] [possible values:
+            modified, created, name]
+
+        --path <PATH>
+            Path towards the folder to scan
+
+        --quiet
+            Whether to shut the fuck up
+
+        --similarity-score <SIMILARITY_SCORE>
+            Required similarity for reporting duplicate images. Used in similarity mode. 0-100, 100
+            indicating exact match [default: 95]
+
+        --sort-output <SORT_OUTPUT>
+            How to sort the duplicate groups; `modified`, `created`, `name` [possible values:
+            modified, created, name]
+
+        --threads <THREADS>
+            How many threads to split file reading into [default: 8]
 ```
